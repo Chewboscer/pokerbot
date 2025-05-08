@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Texas Hold'em Game</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/tone"></script>
+    <script>
+        // Initialize Tone.js (sound effects)
+        const foldSound = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        const callSound = new Tone.Synth({
+            oscillator: { type: 'sawtooth' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        const raiseSound = new Tone.Synth({
+            oscillator: { type: 'square' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        function playFoldSound() {
+            foldSound.triggerAttackRelease("C2", "8n");
+        }
+
+        function playCallSound() {
+            callSound.triggerAttackRelease("G2", "8n");
+        }
+
+        function playRaiseSound() {
+           raiseSound.triggerAttackRelease("C3", "8n");
+        }
+
+        // Function to handle game actions (fold, call, raise) using AJAX
+        function handleAction(action, gameId) {
+            fetch(`/api/game/${gameId}/action`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=${action}`,
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                document.getElementById('game-message').textContent = data.message;
+                
+                if (action === 'fold') {
+                    playFoldSound();
+                }
+                else if (action === 'call'){
+                    playCallSound();
+                    advanceRound(gameId);
+                }
+                else{
+                    playRaiseSound();
+                    advanceRound(gameId);
+                }
+                
+                if (data.message.includes("Game Over")){
+                    // disable buttons
+                    document.getElementById("foldButton").disabled = true;
+                    document.getElementById("callButton").disabled = true;
+                    document.getElementById("raiseButton").disabled = true;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred. Check the console.');
+            });
+        }
+        
+        // Deal cards for the game
+        function dealCards(gameId) {
+            fetch(`/api/game/${gameId}/deal`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Cards dealt:", data);
+                document.getElementById('dealButton').disabled = true;
+                document.getElementById('foldButton').disabled = false;
+                document.getElementById('callButton').disabled = false;
+                document.getElementById('raiseButton').disabled = false;
+                
+                // Enable UI elements for playing
+                document.getElementById('player-actions').style.display = 'block';
+                document.getElementById('game-message').textContent = "Game started. Pre-flop round.";
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred when dealing cards.');
+            });
+        }
+        
+        // Advance to the next round
+        function advanceRound(gameId) {
+            fetch(`/api/game/${gameId}/advance`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Round advanced:", data);
+                
+                // Update UI for the new round
+                const round = data.round;
+                const visibleCards = data.visible_cards;
+                
+                // Show the appropriate number of community cards
+                const communityCards = document.querySelectorAll('.community-card');
+                for (let i = 0; i < communityCards.length; i++) {
+                    if (i < visibleCards) {
+                        communityCards[i].classList.remove('card-back');
+                    }
+                }
+                
+                // Update round message
+                document.getElementById('game-message').textContent += ` Now in ${round} round.`;
+                
+                if (round === 'showdown') {
+                    // Show all cards in showdown
+                    document.getElementById('bot-hand').classList.remove('hidden');
+                    document.getElementById('foldButton').disabled = true;
+                    document.getElementById('callButton').disabled = true;
+                    document.getElementById('raiseButton').disabled = true;
+                    
+                    // Determine winner (simplified)
+                    const winner = Math.random() > 0.5 ? 'Player' : 'Bot';
+                    document.getElementById('game-message').textContent = `Showdown! ${winner} wins!`;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred when advancing round.');
+            });
+        }
+        
+        // When page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize UI
+            document.getElementById('player-actions').style.display = 'none';
+            document.getElementById('foldButton').disabled = true;
+            document.getElementById('callButton').disabled = true;
+            document.getElementById('raiseButton').disabled = true;
+        });
+    </script>
+    <style>
+        .card {
+            width: 80px;
+            height: 120px;
+            margin: 5px;
+            border-radius: 5px;
+            background-size: cover;
+            display: inline-block;
+        }
+        
+        .card-back {
+            background-image: url('/static/cards/card_back.png');
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        #community-cards, #player-hand, #bot-hand {
+            margin: 20px 0;
+        }
+        
+        #pot {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        #game-message {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Texas Hold'em Game</h2>
+        <p>Game Name: {{ game.name }}</p>
+        <p>Game ID: {{ game_id }}</p>
+        <p>Bot Difficulty: {{ game.bot_difficulty }}</p>
+        
+        <button id="dealButton" onclick="dealCards('{{ game_id }}')">Deal Cards</button>
+        
+        <div id="game-message">Press "Deal Cards" to start the game.</div>
+        
+        <div id="pot">Pot: $0</div>
+        
+        <h3>Bot Hand</h3>
+        <div id="bot-hand" class="hidden">
+            <div class="card" id="bot-card-1"></div>
+            <div class="card" id="bot-card-2"></div>
+        </div>
+        
+        <h3>Community Cards</h3>
+        <div id="community-cards">
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+        </div>
+        
+        <h3>Your Hand</h3>
+        <div id="player-hand">
+            <div class="card" id="player-card-1"></div>
+            <div class="card" id="player-card-2"></div>
+        </div>
+        
+        <div id="player-actions">
+            <h3>Actions</h3>
+            <div id="game-actions">
+                <button id="foldButton" data-game-id="{{ game_id }}" onclick="handleAction('fold', this.dataset.gameId)">Fold</button>
+                <button id="callButton" data-game-id="{{ game_id }}" onclick="handleAction('call', this.dataset.gameId)">Call</button>
+                <button id="raiseButton" data-game-id="{{ game_id }}" onclick="handleAction('raise', this.dataset.gameId)">Raise</button>
+            </div>
+        </div>
+        
+        <div class="navigation-links">
+            <p><a href="{{ url_for('game_settings', game_id=game_id) }}">Game Settings</a></p>
+            <p><a href="{{ url_for('game_setup') }}">Back to Game Setup</a></p>
+            <p><a href="{{ url_for('user_details') }}">Back to User Details</a></p>
+        </div>
+    </div>
+</body>
+</html>

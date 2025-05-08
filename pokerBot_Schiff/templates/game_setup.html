@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Game Setup</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Game Setup</h2>
+        <h3>Active Games</h3>
+        {% if user_games %}
+            <ul>
+                {% for game in user_games %}
+                    <li>
+                        Game Name: {{ game.name }} (Bot Difficulty: {{ game.bot_difficulty }})
+                        {% if game.game_started %}
+                            - <a href="{{ url_for('view_game', game_id=game.id) }}">Join Game</a>
+                        {% else %}
+                           - <a href="{{ url_for('view_game', game_id=game.id) }}">View Game</a>
+                        {% endif %}
+                         - <a href="{{ url_for('game_settings', game_id=game.id) }}">Settings</a>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>No active games.</p>
+        {% endif %}
+        <h3>Start New Game</h3>
+        <form method="post" action="{{ url_for('start_game') }}">
+            <p><label for="game_name">Game Name:</label>
+            <input type="text" name="game_name" required></p>
+            <p><label for="bot_difficulty">Bot Difficulty:</label>
+            <select name="bot_difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select></p>
+            <p><button type="submit">Start Game</button></p>
+        </form>
+        <p><a href="{{ url_for('user_details') }}">Back to User Details</a></p>
+    </div>
+</body>
+</html> 

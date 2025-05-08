@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Game Settings</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Game Settings</h2>
+        <form method="post" action="{{ url_for('update_game_settings', game_id=game_id) }}">
+            <p><label for="bot_difficulty">Bot Difficulty:</label>
+            <select name="bot_difficulty">
+                <option value="easy" {% if bot_difficulty == 'easy' %}selected{% endif %}>Easy</option>
+                <option value="medium" {% if bot_difficulty == 'medium' %}selected{% endif %}>Medium</option>
+                <option value="hard" {% if bot_difficulty == 'hard' %}selected{% endif %}>Hard</option>
+            </select></p>
+            <p><button type="submit">Update Settings</button></p>
+        </form>
+        <p><a href="{{ url_for('view_game', game_id=game_id) }}">Back to Game</a></p>
+        <p><a href="{{ url_for('game_setup') }}">Back to Game Setup</a></p>
+    </div>
+</body>
+</html>
