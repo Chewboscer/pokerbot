@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Texas Hold'em Game</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/tone"></script>
+    <script>
+        // Initialize Tone.js (sound effects)
+        const foldSound = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        const callSound = new Tone.Synth({
+            oscillator: { type: 'sawtooth' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        const raiseSound = new Tone.Synth({
+            oscillator: { type: 'square' },
+            envelope: { attack: 0.001, decay: 0.1, sustain: 0.3, release: 0.5 }
+        }).toDestination();
+
+        // Global variables to track game state
+        let playerChips = 1000;
+        let botChips = 1000;
+        let potAmount = 0;
+        let currentBet = 0;
+
+        function playFoldSound() {
+            foldSound.triggerAttackRelease("C2", "8n");
+        }
+
+        function playCallSound() {
+            callSound.triggerAttackRelease("G2", "8n");
+        }
+
+        function playRaiseSound() {
+           raiseSound.triggerAttackRelease("C3", "8n");
+        }
+
+        // Function to set a card's background image
+        function setCardImage(cardElement, cardName) {
+            if (cardName) {
+                cardElement.style.backgroundImage = `url('/static/cards/${cardName}.png')`;
+                cardElement.classList.remove('card-back');
+            }
+        }
+
+        // Function to update the UI with chips and pot information
+        function updateMoneyDisplay(playerChipsAmount, botChipsAmount, potAmount, currentBetAmount = null) {
+            playerChips = playerChipsAmount;
+            botChips = botChipsAmount;
+            potAmount = potAmount;
+            
+            if (currentBetAmount !== null) {
+                currentBet = currentBetAmount;
+            }
+            
+            document.getElementById('player-chips').textContent = `Your Chips: $${playerChips}`;
+            document.getElementById('bot-chips').textContent = `Bot Chips: $${botChips}`;
+            document.getElementById('pot').textContent = `Pot: $${potAmount}`;
+            
+            if (currentBet > 0) {
+                document.getElementById('current-bet').textContent = `Current Bet: $${currentBet}`;
+                document.getElementById('current-bet').style.display = 'block';
+            } else {
+                document.getElementById('current-bet').style.display = 'none';
+            }
+            
+            // Update the call button text based on the current bet
+            if (currentBet > 0) {
+                document.getElementById('callButton').textContent = `Call $${currentBet}`;
+            } else {
+                document.getElementById('callButton').textContent = 'Check';
+            }
+        }
+
+        // Function to handle game actions (fold, call, raise) using AJAX
+        function handleAction(action, gameId) {
+            let formData = new FormData();
+            formData.append('action', action);
+            
+            if (action === 'raise') {
+                const betAmount = document.getElementById('bet-amount').value;
+                formData.append('bet_amount', betAmount);
+            }
+            
+            fetch(`/api/game/${gameId}/action`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                document.getElementById('game-message').textContent = data.message;
+                
+                // Update the money display
+                updateMoneyDisplay(data.player_chips, data.bot_chips, data.pot, data.current_bet);
+                
+                if (action === 'fold') {
+                    playFoldSound();
+                    // Disable buttons when folding
+                    document.getElementById("foldButton").disabled = true;
+                    document.getElementById("callButton").disabled = true;
+                    document.getElementById("raiseButton").disabled = true;
+                    
+                    // Set background to red if player folds (bot wins)
+                    setGameBackground('bot');
+                }
+                else if (action === 'call'){
+                    playCallSound();
+                    advanceRound(gameId);
+                }
+                else{
+                    playRaiseSound();
+                    advanceRound(gameId);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred. Check the console.');
+            });
+        }
+        
+        // Deal cards for the game
+        function dealCards(gameId) {
+            // Reset all cards to card backs first
+            document.querySelectorAll('.community-card').forEach(card => {
+                card.style.backgroundImage = "url('/static/cards/card_back.png')";
+                card.classList.add('card-back');
+            });
+            
+            // Reset player and bot cards
+            document.getElementById('player-card-1').style.backgroundImage = "";
+            document.getElementById('player-card-2').style.backgroundImage = "";
+            document.getElementById('bot-card-1').style.backgroundImage = "";
+            document.getElementById('bot-card-2').style.backgroundImage = "";
+            
+            // Hide the bot's hand
+            document.getElementById('bot-hand').classList.add('hidden');
+            
+            // Reset background color
+            setGameBackground('reset');
+            
+            fetch(`/api/game/${gameId}/deal`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Cards dealt:", data);
+                
+                // Set player card images
+                if (data.player_cards && data.player_cards.length >= 2) {
+                    setCardImage(document.getElementById('player-card-1'), data.player_cards[0]);
+                    setCardImage(document.getElementById('player-card-2'), data.player_cards[1]);
+                }
+                
+                // Update money display
+                updateMoneyDisplay(data.player_chips, data.bot_chips, data.pot, data.current_bet);
+                
+                document.getElementById('dealButton').disabled = true;
+                document.getElementById('foldButton').disabled = false;
+                document.getElementById('callButton').disabled = false;
+                document.getElementById('raiseButton').disabled = false;
+                document.getElementById('betting-controls').style.display = 'block';
+                
+                // Enable UI elements for playing
+                document.getElementById('player-actions').style.display = 'block';
+                document.getElementById('game-message').textContent = data.message;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred when dealing cards.');
+            });
+        }
+        
+        // Advance to the next round
+        function advanceRound(gameId) {
+            fetch(`/api/game/${gameId}/advance`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Round advanced:", data);
+                
+                // Update UI for the new round
+                const round = data.round;
+                const visibleCards = data.visible_cards;
+                
+                // Update money display
+                updateMoneyDisplay(data.player_chips, data.bot_chips, data.pot);
+                
+                // Show the community cards
+                if (data.community_cards) {
+                    const communityCards = document.querySelectorAll('.community-card');
+                    for (let i = 0; i < Math.min(visibleCards, 5); i++) {
+                        if (i < data.community_cards.length) {
+                            setCardImage(communityCards[i], data.community_cards[i]);
+                        }
+                    }
+                }
+                
+                // Update round message
+                if (data.message) {
+                    document.getElementById('game-message').textContent = data.message;
+                } else {
+                    document.getElementById('game-message').textContent = `Now in ${round} round.`;
+                }
+                
+                if (round === 'showdown') {
+                    // Show bot cards in showdown
+                    if (data.bot_cards && data.bot_cards.length >= 2) {
+                        setCardImage(document.getElementById('bot-card-1'), data.bot_cards[0]);
+                        setCardImage(document.getElementById('bot-card-2'), data.bot_cards[1]);
+                        document.getElementById('bot-hand').classList.remove('hidden');
+                    }
+                    
+                    document.getElementById('foldButton').disabled = true;
+                    document.getElementById('callButton').disabled = true;
+                    document.getElementById('raiseButton').disabled = true;
+                    document.getElementById('betting-controls').style.display = 'none';
+                    
+                    // Display winner and hand descriptions
+                    if (data.winner) {
+                        if (data.winner === 'tie') {
+                            document.getElementById('game-message').textContent = `It's a tie! The pot is split. You: ${data.player_hand}, Bot: ${data.bot_hand}`;
+                            setGameBackground('tie');
+                        } else if (data.winner === "{{ username }}") {
+                            document.getElementById('game-message').textContent = `You win with ${data.player_hand}! Bot had ${data.bot_hand}.`;
+                            setGameBackground('player');
+                        } else {
+                            document.getElementById('game-message').textContent = `Bot wins with ${data.bot_hand}! You had ${data.player_hand}.`;
+                            setGameBackground('bot');
+                        }
+                    }
+                    
+                    // Enable deal button for a new hand
+                    document.getElementById('dealButton').disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred when advancing round.');
+            });
+        }
+        
+        // When page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize UI
+            document.getElementById('player-actions').style.display = 'none';
+            document.getElementById('betting-controls').style.display = 'none';
+            document.getElementById('foldButton').disabled = true;
+            document.getElementById('callButton').disabled = true;
+            document.getElementById('raiseButton').disabled = true;
+            document.getElementById('current-bet').style.display = 'none';
+            
+            // Initialize slider
+            const slider = document.getElementById('bet-slider');
+            const betAmount = document.getElementById('bet-amount');
+            
+            slider.addEventListener('input', function() {
+                betAmount.value = slider.value;
+            });
+            
+            betAmount.addEventListener('input', function() {
+                slider.value = betAmount.value;
+            });
+        });
+
+        // Add this function at the top of your JavaScript section
+        function setGameBackground(result) {
+            if (result === 'player') {
+                document.body.style.backgroundColor = '#e6ffe6'; // Light green for player win
+                document.body.style.transition = 'background-color 1s ease';
+            } else if (result === 'bot') {
+                document.body.style.backgroundColor = '#ffe6e6'; // Light red for bot win
+                document.body.style.transition = 'background-color 1s ease';
+            } else if (result === 'tie') {
+                document.body.style.backgroundColor = '#e6e6ff'; // Light blue for ties
+                document.body.style.transition = 'background-color 1s ease';
+            } else {
+                document.body.style.backgroundColor = ''; // Reset to default
+                document.body.style.transition = 'background-color 1s ease';
+            }
+        }
+    </script>
+    <style>
+        .card {
+            width: 80px;
+            height: 120px;
+            margin: 5px;
+            border-radius: 5px;
+            background-size: cover;
+            display: inline-block;
+            border: 1px solid #ccc;
+        }
+        
+        .card-back {
+            background-image: url('/static/cards/card_back.png');
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        #community-cards, #player-hand, #bot-hand {
+            margin: 20px 0;
+        }
+        
+        #pot, #player-chips, #bot-chips, #current-bet {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        #game-message {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        
+        .betting-controls {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        
+        .slider-container input[type="range"] {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        
+        .slider-container input[type="number"] {
+            width: 60px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Texas Hold'em Game</h2>
+        <p>Game Name: {{ game.name }}</p>
+        <p>Game ID: {{ game_id }}</p>
+        <p>Bot Difficulty: {{ game.bot_difficulty }}</p>
+        
+        <button id="dealButton" onclick="dealCards('{{ game_id }}')">Deal Cards</button>
+        
+        <div id="game-message">Press "Deal Cards" to start the game.</div>
+        
+        <div id="money-info">
+            <div id="player-chips">Your Chips: $1000</div>
+            <div id="bot-chips">Bot Chips: $1000</div>
+            <div id="pot">Pot: $0</div>
+            <div id="current-bet">Current Bet: $0</div>
+        </div>
+        
+        <h3>Bot Hand</h3>
+        <div id="bot-hand" class="hidden">
+            <div class="card" id="bot-card-1"></div>
+            <div class="card" id="bot-card-2"></div>
+        </div>
+        
+        <h3>Community Cards</h3>
+        <div id="community-cards">
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+            <div class="card community-card card-back"></div>
+        </div>
+        
+        <h3>Your Hand</h3>
+        <div id="player-hand">
+            <div class="card" id="player-card-1"></div>
+            <div class="card" id="player-card-2"></div>
+        </div>
+        
+        <div id="player-actions">
+            <h3>Actions</h3>
+            <div id="betting-controls" class="betting-controls">
+                <div class="slider-container">
+                    <label for="bet-slider">Bet Amount: $</label>
+                    <input type="range" id="bet-slider" min="1" max="100" value="10">
+                    <input type="number" id="bet-amount" min="1" max="100" value="10">
+                </div>
+            </div>
+            <div id="game-actions">
+                <button id="foldButton" data-game-id="{{ game_id }}" onclick="handleAction('fold', this.dataset.gameId)">Fold</button>
+                <button id="callButton" data-game-id="{{ game_id }}" onclick="handleAction('call', this.dataset.gameId)">Call</button>
+                <button id="raiseButton" data-game-id="{{ game_id }}" onclick="handleAction('raise', this.dataset.gameId)">Raise</button>
+            </div>
+        </div>
+        
+        <div class="navigation-links">
+            <p><a href="{{ url_for('game_settings', game_id=game_id) }}">Game Settings</a></p>
+            <p><a href="{{ url_for('game_setup') }}">Back to Game Setup</a></p>
+            <p><a href="{{ url_for('user_details') }}">Back to User Details</a></p>
+        </div>
+    </div>
+</body>
+</html>

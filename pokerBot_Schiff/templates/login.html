@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login / Register</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Login / Register</h2>
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+        <div class="form-container">
+            <div class="form-group">
+                <h3>Login</h3>
+                <form method="post" action="{{ url_for('validate_login') }}">
+                    <p><input type="text" name="username" placeholder="Username" required></p>
+                    <p><input type="password" name="password" placeholder="Password" required></p>
+                    <p><button type="submit">Login</button></p>
+                </form>
+            </div>
+            <div class="form-group">
+                <h3>Register</h3>
+                <form method="post" action="{{ url_for('register') }}">
+                    <p><input type="text" name="username" placeholder="Username" required></p>
+                    <p><input type="email" name="email" placeholder="Email" required></p>
+                    <p><input type="password" name="password" placeholder="Password" required></p>
+                    <p><button type="submit">Register</button></p>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
